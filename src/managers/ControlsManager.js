@@ -230,9 +230,9 @@ export class ControlsManager {
 
 			} else if (this.cameraType == 'third-person') {
 
-				let 3rdCamera = this.engine.renderingManager.followCamera;
+				let thirdCamera = this.engine.renderingManager.followCamera;
 				this.controls.update();
-				3rdCamera.lookAt(lookatPos);
+				thirdCamera.lookAt(lookatPos);
 
 			}
 
