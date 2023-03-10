@@ -13,7 +13,7 @@ export default {
 		dev({ host: '127.0.0.1' })
 	],
 	output: {
-		file: '../game-engine-demo/libs/engine.min.js',
+		file: 'build/engine.min.js',
 		format: 'es'
 	}
 };
