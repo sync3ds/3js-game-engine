@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgl - loaders - BVHLoader</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link type="text/css" rel="stylesheet" href="./main.css">
+		<style>
+			body { background-color: #eee; color: #444; }
+			a { color: #08f; }
+			#debugger { position: absolute; top: 20px; left: 20px; padding: 5px; background-color: #fff; font-size: 12px; }
+		</style>
+	</head>
+	<body>
+
+		<div id="debugger"></div>
+
+		<script type="module">
+
+			import * as THREE from './lib/three.module.js';
+			import { OrbitControls } from './lib/OrbitControls.js';
+			import { BVHLoader } from './lib/BVHLoader.js';
+			import { FBXLoader } from './lib/FBXLoader.js';
+			import { GLTFLoader } from './lib/GLTFLoader.js';
+			import { SkeletonUtils } from './lib/SkeletonUtils.js';
+			import { GUI } from './lib/dat.gui.module.js';
+
+			var clock = new THREE.Clock();
+			var debuggerDiv = document.getElementById('debugger');
+
+			var camera, controls, scene, renderer, spotLight, directionalLight;
+			var mixer, skeletonHelper, boneContainer, currentModel;
+			var fbx_Loader = new FBXLoader();
+			var bvh_Loader = new BVHLoader();
+			var glb_Loader = new GLTFLoader();
+			var defaultOptions = {
+				hip: "Hips",
+				preserveHipPosition: false,
+				preserveMatrix: true,
+				preservePosition: false,
+				useTargetMatrix: true,
+				names: {}
+			};
+			var guiSettings = {
+				'show model': true,
+				'show skeleton': false,
+			};
+			var animationsList = ['standard-idle', 'idle','idle1','idle2', 'walking', 'jumping', 'stand-up', 'looking-around'];
+			var modelsList = ['marker-man', 'mike', 'starkie', 'pete', 'ch45'];
+			var currentLoadedAnimation = { name: animationsList[0] };
+			var currentLoadedModel = { name: modelsList[0] };
+			var skinnedMeshes = [];
+			var possiblePrefix = ['mixamorig1', 'mixamorig'];
+
+			init();
+			createPanel();
+			loadFBXModel(modelsList[0]);
+			animate();
+
+			function __cleanBonesNames(skeleton){
+				for(let b=0; b<skeleton.bones.length; b++){
+					if(skeleton.bones[b].name == 'ENDSITE'){
+						skeleton.bones.splice(b, 1);
+					}
+				}
+				for(let b=0; b<skeleton.bones.length; b++){
+					for(let p=0; p<possiblePrefix.length; p++){
+						if(skeleton.bones[b].name.indexOf(possiblePrefix[p]) != -1){
+							skeleton.bones[b].name = skeleton.bones[b].name.split(possiblePrefix[p]).join('');
+						}
+					}
+				}
+			}
+			function __cleanTracksNames(tracks){
+				for(let t=0; t<tracks.length; t++){
+					for(let p=0; p<possiblePrefix.length; p++){
+						if(tracks[t].name.indexOf(possiblePrefix[p]) != -1){
+							tracks[t].name = tracks[t].name.split(possiblePrefix[p]).join('');
+						}
+					}
+				}
+			}
+			function __cleanMaterial(material){
+				material.alphaMap = null;
+				material.shininess = 5;
+				material.side = THREE.DoubleSide;
+			}
+
+			function init() {
+
+				camera = new THREE.PerspectiveCamera( 60, window.innerWidth / window.innerHeight, 1, 10000 );
+				camera.position.set( 0, 200, 400 );
+
+				scene = new THREE.Scene();
+				//scene.fog = new THREE.Fog( 0xCCCCCC, 500, 600 );
+				scene.background = new THREE.Color( 0xeeeeee );
+
+				var light = new THREE.AmbientLight( 0xaaaaaa );
+				//scene.add( light );
+				var light = new THREE.HemisphereLight( 0xffffff, 0xdddddd, 0.8 );
+				scene.add( light );
+
+				spotLight = new THREE.SpotLight( 0x888888 );
+				spotLight.name = 'Spot Light';
+				spotLight.angle = Math.PI / 5;
+				spotLight.penumbra = 0.3;
+				spotLight.position.set( 100, 150, 200 );
+				spotLight.castShadow = true;
+				spotLight.shadow.camera.near = 30;
+				spotLight.shadow.camera.far = 5000;
+				spotLight.shadow.mapSize.width = 1024;
+				spotLight.shadow.mapSize.height = 1024;
+				spotLight.shadow.bias = -0.002;
+				spotLight.shadow.radius = 4;
+				scene.add( spotLight );
+
+				var targetObject = new THREE.Object3D();
+				targetObject.position.set(0, 100, 0);
+				scene.add(targetObject);
+				spotLight.target = targetObject;
+
+				scene.add( new THREE.CameraHelper( spotLight.shadow.camera ) );
+
+				directionalLight = new THREE.DirectionalLight( 0xffffff, 0.8 );
+				directionalLight.position.set(-380,130,200);
+				directionalLight.castShadow = true;
+				directionalLight.shadow.mapSize.width = 1024;
+				directionalLight.shadow.mapSize.height = 1024;
+				directionalLight.shadow.radius = 40;
+				//directionalLight.shadow.bias = -0.0005;
+				//scene.add( directionalLight );
+				var targetObject = new THREE.Object3D();
+				targetObject.position.y = 50;
+				//scene.add(targetObject);
+				directionalLight.target = targetObject;
+
+				var helper = new THREE.DirectionalLightHelper( directionalLight, 5 );
+				//scene.add( helper );
+
+				// renderer
+				renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer.shadowMap.enabled = true;
+				renderer.shadowMap.type = THREE.VSMShadowMap;
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				document.body.appendChild( renderer.domElement );
+
+				controls = new OrbitControls( camera, renderer.domElement );
+				controls.minDistance = 30;
+				controls.maxDistance = 7000;
+				controls.target.set(0,75,0);
+
+				var geometry = new THREE.PlaneBufferGeometry( 4000, 4000, 32 );
+				geometry.rotateX(-Math.PI/2);
+				var material = new THREE.MeshStandardMaterial( {color: 0xdddddd} );
+				var plane = new THREE.Mesh( geometry, material );
+				plane.castShadow = false;
+				plane.receiveShadow = true;
+				scene.add( plane );
+
+				window.addEventListener( 'resize', onWindowResize, false );
+
+			}
+
+			/*function loadGLBModel(){
+				glb_Loader.load( 'models/mike.gltf', function ( gltf ) {
+					gltf.scene.traverse( function ( child ) {
+						if(child.type == 'SkinnedMesh'){
+							__cleanBonesNames(child.skeleton);
+							skinnedMeshes.push(child);
+						}
+						if ( child.isMesh ) {
+							child.castShadow = true;
+							child.receiveShadow = true;
+						}
+					} );
+
+					currentModel = gltf.scene;
+					scene.add(currentModel);
+
+					loadBVH(currentLoadedAnimation.name);
+
+				}, function(){
+					// Progress
+				}, function(error){
+					console.log(error);
+				} );
+			}*/
+
+			function loadFBXModel(model){
+				fbx_Loader.load( './models/'+model+'/'+model+'.fbx', function ( object ) {
+					if(currentModel) scene.remove(currentModel);
+					object.traverse( function ( child ) {
+						if(child.type == 'SkinnedMesh'){
+							__cleanBonesNames(child.skeleton);
+							if(child.material.length > 1){
+								for(let material of child.material){
+									__cleanMaterial(material);
+								}
+							} else {
+								__cleanMaterial(child.material);
+							}
+							child.castShadow = true;
+							child.receiveShadow = true;
+							skinnedMeshes.push(child);
+						}
+					} );
+
+					currentModel = object;
+					currentModel.castShadow = true;
+					currentModel.receiveShadow = true;
+					scene.add(currentModel);
+
+					loadBVH(currentLoadedAnimation.name);
+
+				}, function(){
+					// Progress
+				}, function(error){
+					console.log(error);
+				} );
+			}
+
+			function loadBVH(anim){
+				bvh_Loader.load( './animations/'+anim+'.bvh', function ( result ) {
+					__cleanBonesNames(result.skeleton);
+					__cleanTracksNames(result.clip.tracks);
+
+					if(skeletonHelper) scene.remove(skeletonHelper);
+					skeletonHelper = new THREE.SkeletonHelper( result.skeleton.bones[0] );
+					skeletonHelper.skeleton = result.skeleton;
+					skeletonHelper.visible = guiSettings["show skeleton"];
+					boneContainer = new THREE.Group();
+					boneContainer.add( result.skeleton.bones[ 0 ] );
+
+					scene.add( skeletonHelper );
+					scene.add( boneContainer );
+
+					for(let b=0; b<result.skeleton.bones.length; b++){
+						let bName = result.skeleton.bones[b].name;
+						defaultOptions.names[bName] = bName;
+					}
+
+					// play animation
+					mixer = new THREE.AnimationMixer( skeletonHelper );
+					mixer.clipAction( result.clip ).setEffectiveWeight( 1.0 ).play();
+				} );
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function createPanel() {
+
+				var panel = new GUI( { width: 310 } );
+
+				var folder1 = panel.addFolder( 'Visibility' );
+				folder1.add( guiSettings, 'show model' ).onChange( function(visibility){
+					currentModel.visible = visibility;
+				});
+				folder1.add( guiSettings, 'show skeleton' ).onChange( function(visibility){
+					skeletonHelper.visible = visibility;
+				});
+				folder1.open();
+
+				var folder2 = panel.addFolder( 'Models' );
+				var clipCtrl2 = folder2.add( currentLoadedModel, 'name' ).options( modelsList );
+				clipCtrl2.onChange( function () {
+					loadFBXModel( currentLoadedModel.name );
+				} );
+				folder2.open();
+
+				var folder3 = panel.addFolder( 'Animations' );
+				var clipCtrl3 = folder3.add( currentLoadedAnimation, 'name' ).options( animationsList );
+				clipCtrl3.onChange( function () {
+					loadBVH( currentLoadedAnimation.name );
+				} );
+				folder3.open();
+
+			}
+
+			function animate() {
+
+				requestAnimationFrame( animate );
+
+				var delta = clock.getDelta();
+
+				if ( mixer ){
+					mixer.update( delta );
+					for(let mesh of skinnedMeshes){
+						SkeletonUtils.retarget( mesh, skeletonHelper, defaultOptions );
+						//let debuggedBone = mesh.skeleton.bones[0];
+						//debuggerDiv.innerHTML = debuggedBone.name+": "+debuggedBone.position.y;
+					}
+
+				}
+
+				camera.lookAt(0,100,0);
+
+				renderer.render( scene, camera );
+
+			}
+
+		</script>
+	</body>
+</html>

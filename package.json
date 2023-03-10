@@ -1,0 +1,42 @@
+{
+	"name": "game-engine",
+	"version": "0.0.1",
+	"description": "three.js Game Engine",
+	"browser": "build/engine.min.js",
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1",
+		"build": "rollup -cw"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/sync3ds/game-engine.git"
+	},
+	"keywords": [
+		"three.js",
+		"game",
+		"ecs",
+		"cannon.js"
+	],
+	"author": "Dario Corbelli <sync3ds@gmail.com>",
+	"license": "MIT",
+	"bugs": "https://github.com/sync3ds/game-engine/issues",
+	"homepage": "https://github.com/sync3ds/game-engine#readme",
+	"devDependencies": {
+		"@babel/core": "^7.9.6",
+		"@babel/preset-env": "^7.9.6",
+		"@rollup/plugin-babel": "^5.0.2",
+		"@rollup/plugin-commonjs": "^14.0.0",
+		"@rollup/plugin-node-resolve": "^8.4.0",
+		"babel-preset-minify": "^0.5.1",
+		"rollup": "^2.4.0",
+		"rollup-plugin-dev": "^1.1.2",
+		"rollup-plugin-node-polyfills": "^0.2.1",
+		"three": "^0.117.1"
+	},
+	"dependencies": {
+		"ammo.js": "github:kripken/ammo.js",
+		"cannon-es": "^0.9.1",
+		"firebase": "^7.19.1",
+		"three-to-cannon": "^3.0.1"
+	}
+}
